@@ -1,0 +1,135 @@
+import pandas as pd
+import numpy as np
+from numpy.linalg import eig
+from collections import Counter
+from sklearn.model_selection import train_test_split
+
+# Load the Titanic dataset
+data = pd.read_csv('C:/Users/Sanvi/Downloads/titanic.csv')
+
+# Drop columns that are irrelevant or contain missing values
+data = data.drop(['Name', 'Ticket', 'Cabin'], axis=1)
+data = data.fillna(data.mean())
+
+# Convert categorical columns (like 'Sex' and 'Embarked') into numerical values
+data['Sex'] = data['Sex'].map({'male': 0, 'female': 1})
+data['Embarked'] = data['Embarked'].map({'C': 0, 'Q': 1, 'S': 2})
+
+# Split into features and target
+X = data.drop('Survived', axis=1)
+y = data['Survived']
+
+# Split into training and test sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+def pca(X, n_components):
+    # Standardizing the data
+    X_centered = X - np.mean(X, axis=0)
+    
+    # Covariance matrix
+    cov_matrix = np.cov(X_centered, rowvar=False)
+    
+    # Eigenvalues and Eigenvectors
+    eigenvalues, eigenvectors = eig(cov_matrix)
+    
+    # Sorting eigenvalues and eigenvectors
+    sorted_indices = np.argsort(eigenvalues)[::-1]
+    sorted_eigenvectors = eigenvectors[:, sorted_indices]
+    
+    # Select the top 'n_components' eigenvectors
+    eigenvector_subset = sorted_eigenvectors[:, :n_components]
+    
+    # Project the data onto the principal components
+    X_pca = np.dot(X_centered, eigenvector_subset)
+    
+    return X_pca
+class SVM:
+    def __init__(self, learning_rate=0.01, epochs=1000, C=1):
+        self.learning_rate = learning_rate
+        self.epochs = epochs
+        self.C = C  # Regularization parameter
+
+    def fit(self, X, y):
+        n_samples, n_features = X.shape
+        self.weights = np.zeros(n_features)
+        self.bias = 0
+        
+        y = np.where(y == 0, -1, 1)  # Change labels to -1, 1
+
+        for _ in range(self.epochs):
+            for i in range(n_samples):
+                if y[i] * (np.dot(X[i], self.weights) + self.bias) < 1:
+                    self.weights -= self.learning_rate * (2 * self.C * self.weights - np.dot(X[i], y[i]))
+                    self.bias -= self.learning_rate * self.C * y[i]
+                else:
+                    self.weights -= self.learning_rate * 2 * self.C * self.weights
+        
+    def predict(self, X):
+        return np.sign(np.dot(X, self.weights) + self.bias)
+
+class LogisticRegression:
+    def __init__(self, learning_rate=0.01, epochs=1000):
+        self.learning_rate = learning_rate
+        self.epochs = epochs
+
+    def sigmoid(self, z):
+        return 1 / (1 + np.exp(-z))
+
+    def fit(self, X, y):
+        n_samples, n_features = X.shape
+        self.weights = np.zeros(n_features)
+        self.bias = 0
+
+        for _ in range(self.epochs):
+            linear_model = np.dot(X, self.weights) + self.bias
+            y_pred = self.sigmoid(linear_model)
+
+            dw = (1 / n_samples) * np.dot(X.T, (y_pred - y))
+            db = (1 / n_samples) * np.sum(y_pred - y)
+
+            self.weights -= self.learning_rate * dw
+            self.bias -= self.learning_rate * db
+
+    def predict(self, X):
+        linear_model = np.dot(X, self.weights) + self.bias
+        y_pred = self.sigmoid(linear_model)
+        return [1 if i > 0.5 else 0 for i in y_pred]
+# Perform PCA
+X_train_pca = pca(X_train.values, n_components=2)
+X_test_pca = pca(X_test.values, n_components=2)
+
+# Train Logistic Regression Model without PCA
+log_reg = LogisticRegression(learning_rate=0.01, epochs=1000)
+log_reg.fit(X_train.values, y_train)
+
+# Train Logistic Regression Model with PCA
+log_reg_pca = LogisticRegression(learning_rate=0.01, epochs=1000)
+log_reg_pca.fit(X_train_pca, y_train)
+
+# Train SVM Model without PCA
+svm = SVM(learning_rate=0.01, epochs=1000, C=1)
+svm.fit(X_train.values, y_train)
+
+# Train SVM Model with PCA
+svm_pca = SVM(learning_rate=0.01, epochs=1000, C=1)
+svm_pca.fit(X_train_pca, y_train)
+
+# Predict using all models
+log_reg_preds = log_reg.predict(X_test.values)
+log_reg_pca_preds = log_reg_pca.predict(X_test_pca)
+svm_preds = svm.predict(X_test.values)
+svm_pca_preds = svm_pca.predict(X_test_pca)
+
+# Calculate accuracy (can replace with other metrics like F1, Precision, etc.)
+def accuracy(y_true, y_pred):
+    return np.mean(y_true == y_pred)
+
+log_reg_acc = accuracy(y_test, log_reg_preds)
+log_reg_pca_acc = accuracy(y_test, log_reg_pca_preds)
+svm_acc = accuracy(y_test, svm_preds)
+svm_pca_acc = accuracy(y_test, svm_pca_preds)
+
+print(f"Logistic Regression Accuracy (No PCA): {log_reg_acc:.4f}")
+print(f"Logistic Regression Accuracy (With PCA): {log_reg_pca_acc:.4f}")
+print(f"SVM Accuracy (No PCA): {svm_acc:.4f}")
+print(f"SVM Accuracy (With PCA): {svm_pca_acc:.4f}")
